@@ -1,7 +1,9 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
-use std::process::Command;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::process::Command;
 
 #[tauri::command]
 fn compile_latex(content: String) -> Result<String, String> {
@@ -23,10 +25,48 @@ fn compile_latex(content: String) -> Result<String, String> {
     }
 }
 
+#[derive(Serialize)]
+struct OllamaRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+struct OllamaResponse {
+    response: String,
+}
+
+#[tauri::command]
+async fn ask_ollama(prompt: String) -> Result<String, String> {
+    let client = Client::new();
+    let url = "http://localhost:11434/api/generate";
+
+    let payload = OllamaRequest {
+        model: "llama3".to_string(),
+        prompt,
+        stream: false,
+    };
+
+    let res = client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+    if res.status().is_success() {
+        let body: OllamaResponse = res.json().await.map_err(|e| e.to_string())?;
+        Ok(body.response)
+    } else {
+        Err(format!("Ollama error: {}", res.status()))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![compile_latex])
+        .invoke_handler(tauri::generate_handler![compile_latex, ask_ollama])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
