@@ -91,7 +91,7 @@ export const useProjectStore = create<Store>((set, get) => ({
   selectionText: undefined,
   cursorContext: undefined,
   lastSavedAt: undefined,
-  ollamaModel: "llama3",
+  ollamaModel: "gemma3:12b",
   ollamaModels: [],
   ollamaReady: false,
   assistantMessages: [],
