@@ -3,9 +3,8 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf}; // 合并了 Path 和 PathBuf 的引用
 use tauri_plugin_shell::ShellExt;
-use std::path::{Path};
 
 /// Use the crate root (src-tauri, where Cargo.toml and src/ live) so temp.tex/temp.pdf go there.
 fn src_tauri_dir() -> Result<PathBuf, String> {
@@ -22,11 +21,11 @@ Hello, LaTeX.
 \end{document}
 ";
 
-/// Read temp.tex from src-tauri; returns default content if file does not exist.
+/// Read tex from src-tauri; returns default content if file does not exist.
 #[tauri::command]
-fn read_temp_tex() -> Result<String, String> {
+fn read_tex() -> Result<String, String> {
     let dir = src_tauri_dir()?;
-    let path = dir.join("temp.tex");
+    let path = dir.join("main.tex"); // 注意这里读的是 main.tex，与你的 compile_latex 保持一致
     match fs::read_to_string(&path) {
         Ok(s) => Ok(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DEFAULT_TEX.to_string()),
@@ -151,6 +150,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init()) 
         .invoke_handler(tauri::generate_handler![
+            read_tex, // ✅ 记得在这里注册！否则前端无法调用
             compile_latex, 
             ask_ollama, 
             read_folder
