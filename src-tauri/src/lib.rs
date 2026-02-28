@@ -3,7 +3,8 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf}; // 合并了 Path 和 PathBuf 的引用
+use std::path::{Path, PathBuf};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::ShellExt;
 
 const OLLAMA_CHAT: &str = "http://desktop.tailf23c91.ts.net:11434/api/chat";
@@ -24,6 +25,41 @@ Hello, LaTeX.
 \end{document}
 ";
 
+#[derive(Deserialize)]
+struct ReadTextFilePayload {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct ReadTextFileResult {
+    content: String,
+}
+
+/// Read arbitrary UTF-8 text file by path (for file tree / open).
+#[tauri::command]
+fn read_text_file(payload: ReadTextFilePayload) -> Result<ReadTextFileResult, String> {
+    let content = fs::read_to_string(&payload.path).map_err(|e| e.to_string())?;
+    Ok(ReadTextFileResult { content })
+}
+
+#[derive(Deserialize)]
+struct WriteTextFilePayload {
+    path: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct WriteTextFileResult {
+    ok: bool,
+}
+
+/// Write text file (for save).
+#[tauri::command]
+fn write_text_file(payload: WriteTextFilePayload) -> Result<WriteTextFileResult, String> {
+    fs::write(&payload.path, &payload.content).map_err(|e| e.to_string())?;
+    Ok(WriteTextFileResult { ok: true })
+}
+
 /// Read tex from src-tauri; returns default content if file does not exist.
 #[tauri::command]
 fn read_tex() -> Result<String, String> {
@@ -36,7 +72,20 @@ fn read_tex() -> Result<String, String> {
     }
 }
 
-// --- 修改：支持动态工作目录的编译函数 ---
+
+/// Read main.pdf as base64 for embedding in the frontend (avoids asset protocol / iframe crash).
+#[tauri::command]
+fn read_main_pdf_base64() -> Result<String, String> {
+    let dir = src_tauri_dir()?;
+    let path = dir.join("main.pdf");
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &bytes,
+    ))
+}
+
+
 #[tauri::command]
 async fn compile_latex(
     app_handle: tauri::AppHandle, 
@@ -199,20 +248,91 @@ fn read_folder(path: String) -> Result<FileNode, String> {
     build_tree(Path::new(&path))
 }
 
+#[derive(Deserialize)]
+struct FileFilter {
+    name: String,
+    extensions: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct PickFilePayload {
+    filters: Option<Vec<FileFilter>>,
+}
+
+#[derive(Serialize)]
+struct PickFileResult {
+    path: String,
+    name: String,
+}
+
+#[tauri::command]
+fn pick_file(app_handle: tauri::AppHandle, payload: PickFilePayload) -> Result<PickFileResult, String> {
+    let mut builder = app_handle.dialog().file();
+    if let Some(ref filters) = payload.filters {
+        for f in filters {
+            let ext_refs: Vec<&str> = f.extensions.iter().map(String::as_str).collect();
+            builder = builder.add_filter(&f.name, ext_refs.as_slice());
+        }
+    }
+    let file_path = builder.blocking_pick_file();
+    let path_str = file_path
+        .ok_or_else(|| "No file selected".to_string())?
+        .to_string();
+    let name = Path::new(&path_str)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(PickFileResult {
+        path: path_str,
+        name,
+    })
+}
+
+#[derive(Deserialize)]
+struct CopyPdfToWorkspacePayload {
+    #[serde(rename = "srcPath")]
+    src_path: String,
+}
+
+#[derive(Serialize)]
+struct CopyPdfToWorkspaceResult {
+    #[serde(rename = "dstPath")]
+    dst_path: String,
+}
+
+#[tauri::command]
+fn copy_pdf_to_workspace(payload: CopyPdfToWorkspacePayload) -> Result<CopyPdfToWorkspaceResult, String> {
+    let dir = src_tauri_dir()?;
+    let dst = dir.join("uploaded.pdf");
+    fs::copy(&payload.src_path, &dst).map_err(|e| e.to_string())?;
+    Ok(CopyPdfToWorkspaceResult {
+        dst_path: dst.to_string_lossy().into_owned(),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+
         .plugin(tauri_plugin_dialog::init()) 
         .invoke_handler(tauri::generate_handler![
+            read_text_file,
+            write_text_file,
+            read_main_pdf_base64,
+            compile_latex,
+            ask_ollama,
+            pick_file,
+            copy_pdf_to_workspace,
             read_tex, // ✅ 记得在这里注册！否则前端无法调用
             compile_latex, 
-            ask_ollama, 
             read_folder,
             fix_latex_error,
             to_latex_formula,
             autocomplete_latex
         ])
+
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
