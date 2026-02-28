@@ -3,18 +3,31 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use tauri_plugin_shell::ShellExt;
+
+/// Use the crate root (src-tauri, where Cargo.toml and src/ live) so temp.tex/temp.pdf go there.
+fn src_tauri_dir() -> Result<PathBuf, String> {
+    let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if !output_dir.exists() {
+        return Err(format!("src-tauri dir does not exist: {}", output_dir.display()));
+    }
+    Ok(output_dir)
+}
 
 #[tauri::command]
 async fn compile_latex(app_handle: tauri::AppHandle, content: String) -> Result<String, String> {
-    let tex_path = "temp.tex";
-    fs::write(tex_path, content).map_err(|e| e.to_string())?;
+    let output_dir = src_tauri_dir()?;
+    let tex_path = output_dir.join("temp.tex");
+    let pdf_path = output_dir.join("temp.pdf");
+    fs::write(&tex_path, content).map_err(|e| e.to_string())?;
 
     let sidecar_command = app_handle
         .shell()
         .sidecar("tectonic")
         .map_err(|e| format!("Failed to create sidecar: {}", e))?
-        .args(["-X", "compile", tex_path]);
+        .args(["-X", "compile", "temp.tex"])
+        .current_dir(&output_dir);
 
     let output = sidecar_command
         .output()
@@ -22,7 +35,7 @@ async fn compile_latex(app_handle: tauri::AppHandle, content: String) -> Result<
         .map_err(|e| format!("Tectonic execution error: {}", e))?;
 
     if output.status.success() {
-        Ok("Successful compile with built-in Tectonic!".into())
+        Ok(pdf_path.to_string_lossy().into_owned())
     } else {
         let err_msg = String::from_utf8_lossy(&output.stderr);
         Err(format!("Fail to compile: {}", err_msg))

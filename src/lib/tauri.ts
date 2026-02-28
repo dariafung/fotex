@@ -25,9 +25,15 @@ export async function writeTextFile(payload: WriteTextFilePayload): Promise<Writ
   return invoke<WriteTextFileResult>("write_text_file", payload as unknown as Record<string, unknown>);
 }
 
-/** Compile LaTeX (texPath or texContent). Returns log on failure too. */
+/** Compile LaTeX via lib.rs compile_latex (uses tectonic sidecar). Returns absolute PDF path on success. */
 export async function compileTex(payload: CompileTexPayload): Promise<CompileTexResult> {
-  return invoke<CompileTexResult>("compile_tex", payload as unknown as Record<string, unknown>);
+  const content = payload.texContent ?? "";
+  try {
+    const pdfPath = await invoke<string>("compile_latex", { content });
+    return { success: true, pdfPath, log: "Compiled successfully." };
+  } catch (e) {
+    return { success: false, log: String(e) };
+  }
 }
 
 /** Open file picker; optional filters e.g. [{ name: "PDF", extensions: ["pdf"] }]. */
@@ -42,14 +48,18 @@ export async function copyPdfToWorkspace(
   return invoke<CopyPdfToWorkspaceResult>("copy_pdf_to_workspace", payload as unknown as Record<string, unknown>);
 }
 
-/** List available Ollama models. */
+/** List available Ollama models. Stub: lib.rs uses fixed model gemma3:12b. */
 export async function ollamaListModels(): Promise<OllamaListModelsResult> {
-  return invoke<OllamaListModelsResult>("ollama_list_models", {});
+  return { models: ["gemma3:12b"] };
 }
 
-/** Generate via Ollama (no direct fetch from frontend). */
+/** Generate via lib.rs ask_ollama: single prompt, fixed model. Messages formatted as conversation. */
 export async function ollamaGenerate(
   payload: OllamaGeneratePayload
 ): Promise<OllamaGenerateResult> {
-  return invoke<OllamaGenerateResult>("ollama_generate", payload as unknown as Record<string, unknown>);
+  const prompt = payload.messages
+    .map((m) => `${m.role}: ${m.content}`)
+    .join("\n\n");
+  const text = await invoke<string>("ask_ollama", { prompt });
+  return { text };
 }
