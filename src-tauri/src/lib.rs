@@ -143,6 +143,7 @@ async fn fix_latex_error(snippet: String, error_msg: String) -> Result<String, S
     ask_ollama(prompt).await
 }
 
+#[tauri::command]
 async fn to_latex_formula(snippet: String) -> Result<String, String> {
     let prompt: String = format!("Convert the text into latex formula. Only output the latex expression. \n{}", snippet);
     ask_ollama(prompt).await
@@ -207,7 +208,10 @@ pub fn run() {
             read_tex, // ✅ 记得在这里注册！否则前端无法调用
             compile_latex, 
             ask_ollama, 
-            read_folder
+            read_folder,
+            fix_latex_error,
+            to_latex_formula,
+            autocomplete_latex
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
