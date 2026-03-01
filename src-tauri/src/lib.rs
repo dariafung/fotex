@@ -63,14 +63,32 @@ fn write_text_file(payload: WriteTextFilePayload) -> Result<WriteTextFileResult,
     Ok(WriteTextFileResult { ok: true })
 }
 
+#[derive(Serialize)]
+struct ReadTexResult {
+    content: String,
+    #[serde(rename = "texPath")]
+    tex_path: Option<String>,
+    #[serde(rename = "workspaceDir")]
+    workspace_dir: Option<String>,
+}
+
 /// Read tex from src-tauri; returns default content if file does not exist.
+/// When main.tex exists, also returns its path and workspace dir so frontend can compile on first open.
 #[tauri::command]
-fn read_tex() -> Result<String, String> {
+fn read_tex() -> Result<ReadTexResult, String> {
     let dir = src_tauri_dir()?;
     let path = dir.join("main.tex");
     match fs::read_to_string(&path) {
-        Ok(s) => Ok(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(DEFAULT_TEX.to_string()),
+        Ok(s) => Ok(ReadTexResult {
+            content: s,
+            tex_path: Some(path.to_string_lossy().into_owned()),
+            workspace_dir: Some(dir.to_string_lossy().into_owned()),
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ReadTexResult {
+            content: DEFAULT_TEX.to_string(),
+            tex_path: None,
+            workspace_dir: None,
+        }),
         Err(e) => Err(e.to_string()),
     }
 }

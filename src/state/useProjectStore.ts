@@ -30,6 +30,7 @@ export interface ProjectState {
   compileStatus: CompileStatus;
   compileLog: string;
   compiledPdfPath: string | undefined;
+  compiledAt: number | undefined; // timestamp when PDF was last built; used to refresh preview when path unchanged
   uploadedPdfPath: string | undefined;
   activePdfTab: ActivePdfTab;
   selectionText: string | undefined;
@@ -87,6 +88,7 @@ export const useProjectStore = create<Store>((set, get) => ({
   compileStatus: "idle",
   compileLog: "",
   compiledPdfPath: undefined,
+  compiledAt: undefined,
   uploadedPdfPath: undefined,
   activePdfTab: "compiled",
   selectionText: undefined,
@@ -131,8 +133,19 @@ export const useProjectStore = create<Store>((set, get) => ({
 
   loadTempTex: async () => {
     try {
-      const content = await tauri.readMainTex();
-      set({ texContent: content, dirty: false });
+      const result = await tauri.readMainTex();
+      set({
+        texContent: result.content,
+        dirty: false,
+        ...(result.texPath && { texPath: result.texPath }),
+        ...(result.workspaceDir && { workspaceDir: result.workspaceDir }),
+        // Same as after compile: show compiled tab and prepare for PDF/log
+        ...(result.texPath && result.workspaceDir && { activePdfTab: "compiled" as const }),
+      });
+      // When main.tex exists, compile on first open so state matches manual compile (status bar, PDF, log)
+      if (result.texPath && result.workspaceDir) {
+        await get().compile();
+      }
     } catch {
       set({ texContent: DEFAULT_TEX });
     }
@@ -191,6 +204,7 @@ export const useProjectStore = create<Store>((set, get) => ({
         compileStatus: result.success ? "success" : "error",
         compileLog: result.log,
         compiledPdfPath: result.pdfPath ?? get().compiledPdfPath,
+        ...(result.success && { compiledAt: Date.now() }),
       });
       if (result.success) get().setToast("Compiled", "success");
       else get().setToast("Compile failed", "error");

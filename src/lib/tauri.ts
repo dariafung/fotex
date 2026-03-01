@@ -41,9 +41,16 @@ export async function copyPdfToWorkspace(
   return invoke<CopyPdfToWorkspaceResult>("copy_pdf_to_workspace", { payload });
 }
 
-/** Read main.tex from src-tauri; used to init the editor. */
-export async function readMainTex(): Promise<string> {
-  return invoke<string>("read_tex");
+/** Result of reading main.tex: content and optional path info when file exists. */
+export interface ReadMainTexResult {
+  content: string;
+  texPath?: string;
+  workspaceDir?: string;
+}
+
+/** Read main.tex from src-tauri; used to init the editor. When file exists, returns path/workspace for compile. */
+export async function readMainTex(): Promise<ReadMainTexResult> {
+  return invoke<ReadMainTexResult>("read_tex");
 }
 
 /** Read main.pdf as base64 for embedding (avoids asset protocol). */
