@@ -131,8 +131,19 @@ export const useProjectStore = create<Store>((set, get) => ({
 
   loadTempTex: async () => {
     try {
-      const content = await tauri.readMainTex();
-      set({ texContent: content, dirty: false });
+      const result = await tauri.readMainTex();
+      set({
+        texContent: result.content,
+        dirty: false,
+        ...(result.texPath && { texPath: result.texPath }),
+        ...(result.workspaceDir && { workspaceDir: result.workspaceDir }),
+        // Same as after compile: show compiled tab and prepare for PDF/log
+        ...(result.texPath && result.workspaceDir && { activePdfTab: "compiled" as const }),
+      });
+      // When main.tex exists, compile on first open so state matches manual compile (status bar, PDF, log)
+      if (result.texPath && result.workspaceDir) {
+        await get().compile();
+      }
     } catch {
       set({ texContent: DEFAULT_TEX });
     }
