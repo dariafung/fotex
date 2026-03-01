@@ -168,13 +168,6 @@ struct Message {
     content: String,
 }
 
-#[derive(Serialize)]
-struct OllamaRequest {
-    model: String,
-    messages: Vec<Message>,
-    stream: bool,
-}
-
 #[derive(Deserialize)]
 struct OllamaMessage {
     content: String,
@@ -203,17 +196,31 @@ struct OllamaListModelsResult {
     models: Vec<String>,
 }
 
-#[tauri::command]
-async fn ollama_list_models() -> Result<OllamaListModelsResult, String> {
-    let client = Client::new();
-    // 使用你代码里配置的 Tailscale IP
-    let url = "http://desktop.tailf23c91.ts.net:11434/api/tags";
+#[derive(Serialize)]
+struct OllamaOptions {
+    num_predict: Option<i32>,
+    temperature: Option<f32>,
+}
 
-    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+#[derive(Serialize)]
+struct OllamaRequest {
+    model: String,
+    messages: Vec<Message>,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<OllamaOptions>,
+}
+
+#[tauri::command]
+async fn ollama_list_models(base_url: String) -> Result<OllamaListModelsResult, String> {
+    let client = Client::new();
+    // 自动清理末尾多余的斜杠并拼接路径
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+
+    let res = client.get(&url).send().await.map_err(|e| format!("Network error: {}", e))?;
 
     if res.status().is_success() {
-        let body: OllamaTagsResponse = res.json().await.map_err(|e| e.to_string())?;
-        // 提取所有的模型名称
+        let body: OllamaTagsResponse = res.json().await.map_err(|e| format!("JSON error: {}", e))?;
         let models = body.models.into_iter().map(|m| m.name).collect();
         Ok(OllamaListModelsResult { models })
     } else {
@@ -231,20 +238,26 @@ struct OllamaGenerateResult {
 
 #[tauri::command]
 async fn ollama_generate(
+    base_url: String, // 👈 新增参数
     model: String,
     messages: Vec<Message>,
 ) -> Result<OllamaGenerateResult, String> {
     let client = Client::new();
-    let url = OLLAMA_CHAT; // http://desktop.tailf23c91.ts.net:11434/api/chat
+    let url = format!("{}/api/chat", base_url.trim_end_matches('/'));
 
     let payload = OllamaRequest {
-        model, // 👈 动态使用前端传过来的模型，不再用写死的 OLLAMA_MODEL
+        model,
         messages,
         stream: false,
+        // ✨ 加入 options 突破长度限制，防止 \end{document} 被吞
+        options: Some(OllamaOptions {
+            num_predict: Some(8192), 
+            temperature: Some(0.2),
+        }),
     };
 
     let res = client
-        .post(url)
+        .post(&url)
         .json(&payload)
         .send()
         .await
@@ -253,9 +266,7 @@ async fn ollama_generate(
     if res.status().is_success() {
         let body: OllamaResponse = res.json().await.map_err(|e| e.to_string())?;
         let final_text = clean_output(&body.message.content);
-        Ok(OllamaGenerateResult {
-            text: final_text,
-        })
+        Ok(OllamaGenerateResult { text: final_text })
     } else {
         Err(format!("Ollama error: {}", res.status()))
     }
@@ -281,6 +292,10 @@ async fn ask_ollama(prompt: String) -> Result<String, String> {
         model: OLLAMA_MODEL.to_string(),
         messages,
         stream: false,
+        options: Some(OllamaOptions {
+            num_predict: Some(4096), 
+            temperature: Some(0.2),
+        }),
     };
 
     let res = client

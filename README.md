@@ -57,8 +57,7 @@
 
 1.  **Rust**: [Install Rust](https://www.rust-lang.org/tools/install)
 2.  **Node.js**: `pnpm` is recommended.
-3.  **Tectonic**: The app uses `tectonic` as a sidecar.
-4.  **Ollama**: Install and run [Ollama](https://ollama.com/).
+3.  **Ollama**: Install and run [Ollama](https://ollama.com/).
 
 ### Installation
 

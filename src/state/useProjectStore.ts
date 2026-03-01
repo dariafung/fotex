@@ -41,6 +41,7 @@ export interface ProjectState {
   selectionText: string | undefined;
   cursorContext: string | undefined;
   lastSavedAt: number | undefined;
+  ollamaUrl: string;
   ollamaModel: string;
   ollamaModels: string[];
   ollamaReady: boolean;
@@ -58,6 +59,7 @@ export interface ProjectActions {
   setSelection: (text: string | undefined) => void;
   setCursorContext: (context: string | undefined) => void;
   setActivePdfTab: (tab: ActivePdfTab) => void;
+  setOllamaUrl: (url: string) => void;
   setOllamaModel: (model: string) => void;
   setToast: (message: string | undefined, variant?: "info" | "error" | "success") => void;
   rewriteEditorContent: (instruction: string) => Promise<void>;
@@ -94,6 +96,7 @@ export const useProjectStore = create<Store>((set, get) => ({
   selectionText: undefined,
   cursorContext: undefined,
   lastSavedAt: undefined,
+  ollamaUrl: "http://localhost:11434",
   ollamaModel: "gemma3:12b",
   ollamaModels: [],
   ollamaReady: false,
@@ -109,18 +112,22 @@ export const useProjectStore = create<Store>((set, get) => ({
   setSelection: (text) => set({ selectionText: text }),
   setCursorContext: (context) => set({ cursorContext: context }),
   setActivePdfTab: (tab) => set({ activePdfTab: tab }),
+  setOllamaUrl: (url) => set({ ollamaUrl: url }),
   setOllamaModel: (model) => set({ ollamaModel: model }),
   setToast: (message, variant = "info") => set({ toastMessage: message, toastVariant: variant }),
 
   loadModels: async () => {
+    const { ollamaUrl } = get(); // ✨ 获取当前配置的 URL
     try {
-      const { models } = await tauri.ollamaListModels();
+      const { models } = await tauri.ollamaListModels(ollamaUrl);
       set({ ollamaModels: models ?? [], ollamaReady: true, assistantError: undefined });
+      
+      // 如果当前选中的模型不在列表中，自动切换到第一个
       if (models?.length && !models.includes(get().ollamaModel)) {
         set({ ollamaModel: models[0] });
       }
     } catch {
-      set({ ollamaModels: [], ollamaReady: false, assistantError: "Ollama not running" });
+      set({ ollamaModels: [], ollamaReady: false, assistantError: "Ollama not running at this address" });
     }
   },
 
@@ -201,13 +208,16 @@ export const useProjectStore = create<Store>((set, get) => ({
   },
 
   sendChat: async (content) => {
-    const { ollamaModel, assistantMessages, ollamaReady } = get();
-    if (!ollamaReady) return get().setToast("Ollama not running.", "error");
+    const { ollamaUrl, ollamaModel, assistantMessages, ollamaReady } = get();
+    if (!ollamaReady) return get().setToast("Ollama not connected.", "error");
+
     const next: Message[] = [...assistantMessages, { role: "user", content }];
-    set({ assistantMessages: next, assistantStatus: "thinking" });
+    set({ assistantStatus: "thinking" });
+    
     try {
       const { text } = await tauri.ollamaGenerate({
-        model: ollamaModel,
+        baseUrl: ollamaUrl, // ✨ 传地址
+        model: ollamaModel, // ✨ 传模型
         messages: next.map((m) => ({ role: m.role, content: m.content })),
       });
       set({ assistantMessages: [...next, { role: "assistant", content: text }], assistantStatus: "idle" });
@@ -217,11 +227,13 @@ export const useProjectStore = create<Store>((set, get) => ({
   },
 
   promptFormula: async () => {
-    const { selectionText, ollamaReady, ollamaModel, assistantMessages } = get();
+    const { selectionText, ollamaReady, ollamaUrl, ollamaModel, assistantMessages } = get();
     if (!selectionText?.trim() || !ollamaReady) return;
+
     set({ assistantStatus: "thinking" });
     try {
       const { text } = await tauri.ollamaGenerate({
+        baseUrl: ollamaUrl,
         model: ollamaModel,
         messages: [
           { role: "system", content: PROMPT_FORMULA },
@@ -240,11 +252,13 @@ export const useProjectStore = create<Store>((set, get) => ({
   },
 
   promptFixError: async () => {
-    const { compileLog, texContent, ollamaReady, ollamaModel, assistantMessages } = get();
+    const { compileLog, texContent, ollamaReady, ollamaUrl, ollamaModel, assistantMessages } = get();
     if (!compileLog?.trim() || !ollamaReady) return;
+
     set({ assistantStatus: "thinking" });
     try {
       const { text } = await tauri.ollamaGenerate({
+        baseUrl: ollamaUrl,
         model: ollamaModel,
         messages: [
           { role: "system", content: PROMPT_FIX_ERROR },
@@ -252,9 +266,7 @@ export const useProjectStore = create<Store>((set, get) => ({
         ],
       });
 
-      // Robust extraction
       const fixedContent = extractLatex(text);
-
       set({
         assistantStatus: "idle",
         assistantMessages: [
@@ -264,7 +276,6 @@ export const useProjectStore = create<Store>((set, get) => ({
         ],
       });
 
-      // Update the editor!
       get().setTexContent(fixedContent);
       get().setToast("AI Fix Applied!", "success");
     } catch (e) {
@@ -274,12 +285,13 @@ export const useProjectStore = create<Store>((set, get) => ({
   },
 
   promptComplete: async () => {
-    const { cursorContext, ollamaReady, ollamaModel, assistantMessages } = get();
+    const { cursorContext, ollamaReady, ollamaModel, ollamaUrl, assistantMessages } = get();
     if (!cursorContext?.trim() || !ollamaReady) return;
     set({ assistantStatus: "thinking" });
     try {
       const { text } = await tauri.ollamaGenerate({
         model: ollamaModel,
+        baseUrl: ollamaUrl,
         messages: [
           { role: "system", content: PROMPT_COMPLETE },
           { role: "user", content: userPromptComplete(cursorContext) }
@@ -303,7 +315,7 @@ export const useProjectStore = create<Store>((set, get) => ({
   clearAssistant: () => set({ assistantMessages: [], assistantStatus: "idle", assistantError: undefined }),
 
   rewriteEditorContent: async (instruction) => {
-    const { texContent, ollamaModel, ollamaReady } = get();
+    const { texContent, ollamaModel, ollamaUrl, ollamaReady } = get();
     if (!ollamaReady) return;
 
     set({ assistantStatus: "thinking", assistantError: undefined });
@@ -316,6 +328,7 @@ ${texContent}`;
     try {
       const { text } = await tauri.ollamaGenerate({
         model: ollamaModel,
+        baseUrl: ollamaUrl,
         messages: [{ role: "user", content: prompt }],
       });
 
