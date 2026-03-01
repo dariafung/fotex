@@ -30,6 +30,7 @@ export interface ProjectState {
   compileStatus: CompileStatus;
   compileLog: string;
   compiledPdfPath: string | undefined;
+  compiledAt: number | undefined; // timestamp when PDF was last built; used to refresh preview when path unchanged
   uploadedPdfPath: string | undefined;
   activePdfTab: ActivePdfTab;
   selectionText: string | undefined;
@@ -87,6 +88,7 @@ export const useProjectStore = create<Store>((set, get) => ({
   compileStatus: "idle",
   compileLog: "",
   compiledPdfPath: undefined,
+  compiledAt: undefined,
   uploadedPdfPath: undefined,
   activePdfTab: "compiled",
   selectionText: undefined,
@@ -202,6 +204,7 @@ export const useProjectStore = create<Store>((set, get) => ({
         compileStatus: result.success ? "success" : "error",
         compileLog: result.log,
         compiledPdfPath: result.pdfPath ?? get().compiledPdfPath,
+        ...(result.success && { compiledAt: Date.now() }),
       });
       if (result.success) get().setToast("Compiled", "success");
       else get().setToast("Compile failed", "error");
