@@ -12,8 +12,19 @@ export function PdfTabs() {
   const compileLog = useProjectStore((s) => s.compileLog);
   const compileStatus = useProjectStore((s) => s.compileStatus);
 
+  const ollamaReady = useProjectStore((s) => s.ollamaReady);
+  const assistantStatus = useProjectStore((s) => s.assistantStatus);
+  const rewriteEditorContent = useProjectStore((s) => s.rewriteEditorContent);
+
   const currentPath = activePdfTab === "compiled" ? compiledPdfPath : uploadedPdfPath;
   const refreshKey = activePdfTab === "compiled" ? compiledAt : undefined;
+
+  const handleFixError = () => {
+    if (!compileLog) return;
+    
+    const prompt = `The LaTeX compilation failed with the following log:\n${compileLog}\n\nPlease fix the errors in my LaTeX code.`;
+    rewriteEditorContent(prompt);
+  };
 
   return (
     <div className="pdf-tabs">
@@ -45,8 +56,41 @@ export function PdfTabs() {
       </div>
       <div className="pdf-tabs-body">
         {logOpen ? (
-          <div className="pdf-log-panel pdf-log-panel--full">
-            <pre className="pdf-log-content">{compileLog || "No log yet."}</pre>
+          <div className="pdf-log-panel pdf-log-panel--full" style={{ display: 'flex', flexDirection: 'column' }}>
+            
+            <div style={{ 
+              paddingBottom: '10px', 
+              marginBottom: '10px', 
+              borderBottom: '1px solid #334155', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center' 
+            }}>
+              <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                {compileStatus === "error" ? "⚠️ Compilation failed" : "Compilation Log"}
+              </span>
+              
+              <button
+                type="button"
+                className="pdf-preview__open-btn"
+                onClick={handleFixError}
+                disabled={!ollamaReady || assistantStatus === "thinking" || !compileLog || compileStatus === "success"}
+                style={{ 
+                  padding: '6px 12px', 
+                  fontSize: '13px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px',
+                  opacity: (!ollamaReady || assistantStatus === "thinking" || !compileLog || compileStatus === "success") ? 0.5 : 1
+                }}
+              >
+                {assistantStatus === "thinking" ? "⏳ Fixing..." : "✨ Fix error with AI"}
+              </button>
+            </div>
+
+            <pre className="pdf-log-content" style={{ flex: 1, overflow: 'auto', margin: 0 }}>
+              {compileLog || "No log yet."}
+            </pre>
           </div>
         ) : (
           <PdfPreview pdfPath={currentPath} refreshKey={refreshKey} />

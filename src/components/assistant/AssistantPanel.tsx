@@ -1,18 +1,13 @@
 import { useState } from "react";
 import { useProjectStore } from "../../state/useProjectStore";
-// 注意：删除了 ChatThread 的引入！
-import { PromptButtons } from "./PromptButtons";
 
 export function AssistantPanel() {
   const [input, setInput] = useState("");
   const ollamaModel = useProjectStore((s) => s.ollamaModel);
   const ollamaModels = useProjectStore((s) => s.ollamaModels);
   const setOllamaModel = useProjectStore((s) => s.setOllamaModel);
-
-  // 引入我们刚才新建的方法，替代 sendChat
   const rewriteEditorContent = useProjectStore((s) => s.rewriteEditorContent);
 
-  const clearAssistant = useProjectStore((s) => s.clearAssistant);
   const ollamaReady = useProjectStore((s) => s.ollamaReady);
   const assistantStatus = useProjectStore((s) => s.assistantStatus);
   const assistantError = useProjectStore((s) => s.assistantError);
@@ -21,7 +16,6 @@ export function AssistantPanel() {
     const text = input.trim();
     if (!text) return;
     setInput("");
-    // 改为调用重写编辑器的方法
     rewriteEditorContent(text);
   };
 
@@ -54,15 +48,7 @@ export function AssistantPanel() {
             ))}
           </select>
         )}
-        {/* 如果你连 Clear 按钮都不想要了，这个 button 也可以删掉 */}
-        <button type="button" className="assistant-clear" onClick={clearAssistant} title="Clear status">
-          Clear
-        </button>
       </div>
-
-      <PromptButtons />
-
-      {/* 🛑 删除了 <ChatThread /> 组件，整个对话框区域不复存在了 */}
 
       <div className="assistant-composer">
         {assistantError && (
@@ -79,7 +65,7 @@ export function AssistantPanel() {
                 handleSend();
               }
             }}
-            placeholder="告诉 AI 你想怎么修改这段代码... (直接回车执行)"
+            placeholder="Tell AI how do you want to change this file..."
             rows={2}
             disabled={!ollamaReady || assistantStatus === "thinking"}
           />
