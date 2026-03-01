@@ -65,7 +65,7 @@
 
 ```bash
 # Clone the repository
-git clone [https://github.com/your-username/fotex.git](https://github.com/your-username/fotex.git)
+git clone https://github.com/Huaiyuan-Jing/fotex.git
 cd fotex
 
 # Install dependencies
