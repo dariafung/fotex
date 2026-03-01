@@ -89,18 +89,10 @@ export async function readFolder(path: string): Promise<FileNode> {
   return invoke<FileNode>("read_folder", { path });
 }
 
-/** List available Ollama models. Stub: lib.rs uses fixed model gemma3:12b. */
-export async function ollamaListModels(): Promise<OllamaListModelsResult> {
-  return { models: ["gemma3:12b"] };
+export async function ollamaListModels() {
+  return invoke<{ models: string[] }>("ollama_list_models");
 }
 
-/** Generate via lib.rs ask_ollama: single prompt, fixed model. Messages formatted as conversation. */
-export async function ollamaGenerate(
-  payload: OllamaGeneratePayload
-): Promise<OllamaGenerateResult> {
-  const prompt = payload.messages
-    .map((m) => `${m.role}: ${m.content}`)
-    .join("\n\n");
-  const text = await invoke<string>("ask_ollama", { prompt });
-  return { text };
+export async function ollamaGenerate(args: { model: string; messages: { role: string; content: string }[] }) {
+  return invoke<{ text: string }>("ollama_generate", args);
 }

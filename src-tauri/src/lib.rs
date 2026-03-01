@@ -1,11 +1,12 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::ShellExt; // 记得在文件顶部加上这一行
 
 const OLLAMA_CHAT: &str = "http://desktop.tailf23c91.ts.net:11434/api/chat";
 const OLLAMA_MODEL: &str = "gemma3:12b";
@@ -161,7 +162,7 @@ async fn compile_latex(
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct Message {
     role: String,
     content: String,
@@ -182,6 +183,82 @@ struct OllamaMessage {
 #[derive(Deserialize)]
 struct OllamaResponse {
     message: OllamaMessage,
+}
+
+// ==========================================
+// 新增：拉取模型列表
+// ==========================================
+#[derive(Deserialize)]
+struct OllamaTagsResponse {
+    models: Vec<OllamaModelTag>,
+}
+
+#[derive(Deserialize)]
+struct OllamaModelTag {
+    name: String,
+}
+
+#[derive(Serialize)]
+struct OllamaListModelsResult {
+    models: Vec<String>,
+}
+
+#[tauri::command]
+async fn ollama_list_models() -> Result<OllamaListModelsResult, String> {
+    let client = Client::new();
+    // 使用你代码里配置的 Tailscale IP
+    let url = "http://desktop.tailf23c91.ts.net:11434/api/tags";
+
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let body: OllamaTagsResponse = res.json().await.map_err(|e| e.to_string())?;
+        // 提取所有的模型名称
+        let models = body.models.into_iter().map(|m| m.name).collect();
+        Ok(OllamaListModelsResult { models })
+    } else {
+        Err(format!("Ollama error: {}", res.status()))
+    }
+}
+
+// ==========================================
+// 新增：动态模型生成
+// ==========================================
+#[derive(Serialize)]
+struct OllamaGenerateResult {
+    text: String,
+}
+
+#[tauri::command]
+async fn ollama_generate(
+    model: String,
+    messages: Vec<Message>,
+) -> Result<OllamaGenerateResult, String> {
+    let client = Client::new();
+    let url = OLLAMA_CHAT; // http://desktop.tailf23c91.ts.net:11434/api/chat
+
+    let payload = OllamaRequest {
+        model, // 👈 动态使用前端传过来的模型，不再用写死的 OLLAMA_MODEL
+        messages,
+        stream: false,
+    };
+
+    let res = client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+    if res.status().is_success() {
+        let body: OllamaResponse = res.json().await.map_err(|e| e.to_string())?;
+        let final_text = clean_output(&body.message.content);
+        Ok(OllamaGenerateResult {
+            text: final_text,
+        })
+    } else {
+        Err(format!("Ollama error: {}", res.status()))
+    }
 }
 
 #[tauri::command]
@@ -249,8 +326,19 @@ async fn autocomplete_latex(prefix: String) -> Result<String, String> {
 }
 
 fn clean_output(s: &str) -> String {
-    s.trim()
+    // 1. 创建正则：匹配 <think>...</think> 及其内部所有内容
+    // (?s) 是标志位，表示让 . 匹配包括换行符在内的所有字符 (dot matches all)
+    // *? 是非贪婪匹配，确保只匹配到最近的结束标签
+    let re_think = Regex::new(r"(?s)<think>.*?</think>").unwrap();
+
+    // 2. 执行替换，将思考过程替换为空字符串
+    let stripped = re_think.replace_all(s, "");
+
+    // 3. 继续清理原有的 Markdown 代码块标签
+    stripped
+        .trim()
         .trim_start_matches("```latex")
+        .trim_start_matches("```tex") // 兼容不同的标注
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim()
@@ -398,7 +486,9 @@ pub fn run() {
             read_folder,
             fix_latex_error,
             to_latex_formula,
-            autocomplete_latex
+            autocomplete_latex,
+            ollama_list_models,
+            ollama_generate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
