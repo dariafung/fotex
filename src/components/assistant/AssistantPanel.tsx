@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useProjectStore } from "../../state/useProjectStore";
-import { ChatThread } from "./ChatThread";
+// 注意：删除了 ChatThread 的引入！
 import { PromptButtons } from "./PromptButtons";
 
 export function AssistantPanel() {
@@ -8,7 +8,10 @@ export function AssistantPanel() {
   const ollamaModel = useProjectStore((s) => s.ollamaModel);
   const ollamaModels = useProjectStore((s) => s.ollamaModels);
   const setOllamaModel = useProjectStore((s) => s.setOllamaModel);
-  const sendChat = useProjectStore((s) => s.sendChat);
+  
+  // 引入我们刚才新建的方法，替代 sendChat
+  const rewriteEditorContent = useProjectStore((s) => s.rewriteEditorContent); 
+  
   const clearAssistant = useProjectStore((s) => s.clearAssistant);
   const ollamaReady = useProjectStore((s) => s.ollamaReady);
   const assistantStatus = useProjectStore((s) => s.assistantStatus);
@@ -18,13 +21,14 @@ export function AssistantPanel() {
     const text = input.trim();
     if (!text) return;
     setInput("");
-    sendChat(text);
+    // 改为调用重写编辑器的方法
+    rewriteEditorContent(text);
   };
 
   return (
     <div className="assistant-panel">
       <div className="assistant-panel-header">
-        <span className="assistant-title">AI Assistant</span>
+        <span className="assistant-title">AI Editor Assistant ✨</span>
         {!ollamaReady && (
           <span className="assistant-status assistant-status--error">Ollama not running</span>
         )}
@@ -50,12 +54,16 @@ export function AssistantPanel() {
             ))}
           </select>
         )}
-        <button type="button" className="assistant-clear" onClick={clearAssistant} title="Clear chat">
+        {/* 如果你连 Clear 按钮都不想要了，这个 button 也可以删掉 */}
+        <button type="button" className="assistant-clear" onClick={clearAssistant} title="Clear status">
           Clear
         </button>
       </div>
+      
       <PromptButtons />
-      <ChatThread />
+      
+      {/* 🛑 删除了 <ChatThread /> 组件，整个对话框区域不复存在了 */}
+      
       <div className="assistant-composer">
         {assistantError && (
           <div className="assistant-error">{assistantError}</div>
@@ -71,18 +79,18 @@ export function AssistantPanel() {
                 handleSend();
               }
             }}
-            placeholder="Ask about LaTeX..."
+            placeholder="告诉 AI 你想怎么修改这段代码... (直接回车执行)"
             rows={2}
-            disabled={!ollamaReady}
+            disabled={!ollamaReady || assistantStatus === "thinking"}
           />
           <button
             type="button"
             className="assistant-send"
             onClick={handleSend}
             disabled={!ollamaReady || assistantStatus === "thinking" || !input.trim()}
-            title="Send"
+            title={assistantStatus === "thinking" ? "Thinking..." : "Send"}
           >
-            <span aria-hidden>✈</span>
+            <span aria-hidden>{assistantStatus === "thinking" ? "⏳" : "✨"}</span>
           </button>
         </div>
       </div>

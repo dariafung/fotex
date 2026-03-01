@@ -57,7 +57,7 @@ export interface ProjectActions {
   setActivePdfTab: (tab: ActivePdfTab) => void;
   setOllamaModel: (model: string) => void;
   setToast: (message: string | undefined, variant?: "info" | "error" | "success") => void;
-
+  rewriteEditorContent: (instruction: string) => Promise<void>;
   loadModels: () => Promise<void>;
   loadTempTex: () => Promise<void>;
   openFile: () => Promise<void>;
@@ -368,4 +368,53 @@ export const useProjectStore = create<Store>((set, get) => ({
       assistantStatus: "idle",
       assistantError: undefined,
     }),
+
+  // ======= 新增的直接重写方法 =======
+  rewriteEditorContent: async (instruction) => {
+    const { texContent, ollamaModel, ollamaReady } = get();
+    if (!ollamaReady) {
+      get().setToast("Ollama not running.", "error");
+      return;
+    }
+
+    // 状态变为思考中
+    set({ assistantStatus: "thinking", assistantError: undefined });
+
+    // 强力英文 Prompt：把指令和当前代码发给 AI
+    const prompt = `You are an expert LaTeX code generator. 
+The user wants to modify or generate LaTeX code based on the following instruction:
+"${instruction}"
+
+Current LaTeX Code:
+${texContent}
+
+CRITICAL INSTRUCTIONS:
+- Output ONLY the raw LaTeX code.
+- DO NOT include any explanations, greetings, or conversational text.
+- DO NOT wrap the output in markdown code blocks (e.g., absolutely no \`\`\`latex or \`\`\`).
+- The output must be strictly the compilable LaTeX source code.`;
+
+    try {
+      // 调用后端的 Ollama
+      const { text } = await tauri.ollamaGenerate({
+        model: ollamaModel,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      // 极简清理可能残留的 markdown 标记
+      const finalContent = text
+        .replace(/^```(?:latex|tex)?\n?/mi, '')
+        .replace(/```$/m, '')
+        .trim();
+
+      // 关键：直接覆盖全局的编辑器内容状态！
+      get().setTexContent(finalContent);
+
+      set({ assistantStatus: "idle" });
+      get().setToast("Document updated by AI ✨", "success");
+    } catch (e) {
+      set({ assistantStatus: "error", assistantError: String(e) });
+      get().setToast(String(e), "error");
+    }
+  },
 }));
