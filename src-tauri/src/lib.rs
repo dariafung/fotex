@@ -301,7 +301,7 @@ async fn ask_ollama(prompt: String) -> Result<String, String> {
 #[tauri::command]
 async fn fix_latex_error(snippet: String, error_msg: String) -> Result<String, String> {
     let prompt = format!(
-        "Fix this LaTeX compile error.\nError: {}\n\nCode:\n{}",
+        "Fix this LaTeX compile error.\nError: {}\n\nCode:\n{}\nOutput ONLY raw LaTeX. No markdown fences, no explanations unless asked.",
         error_msg, snippet
     );
     ask_ollama(prompt).await

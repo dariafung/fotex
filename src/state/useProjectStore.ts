@@ -24,14 +24,6 @@ Hello, LaTeX.
 // Helper to extract LaTeX from AI responses robustly
 const extractLatex = (raw: string): string => {
   return raw
-    // 1. Remove <think> blocks (fallback for frontend safety)
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    // 2. Try to extract content between ```latex and ```
-    // This regex looks for code blocks anywhere in the text
-    .replace(/[\s\S]*?```(?:latex|tex)?\n?([\s\S]*?)\n?```[\s\S]*/gi, "$1")
-    // 3. Fallback: if no code blocks found, just strip fences from start/end
-    .replace(/^```(?:latex|tex)?\n?/mi, '')
-    .replace(/```$/m, '')
     .trim();
 };
 
